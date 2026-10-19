@@ -19,7 +19,7 @@ Additionally, all loggers in `fit.trainer.logger` have `name` set to `binary`.
 
 The second model is a multiclass classifier with a single healthy class, predicting whether a crop is healthy or afflicted with one of several diseases. In this configuration, the following fields are defined in the following way:
 ````
-fit.model.model.init_args.num_classes: 13
+fit.model.model.init_args.num_classes: 9
 fit.data.task: single-HLT
 ````
 Additionally, all loggers in `fit.trainer.logger` have `name` set to `single_HLT`.
@@ -28,10 +28,25 @@ Additionally, all loggers in `fit.trainer.logger` have `name` set to `single_HLT
 
 The third model is a multiclass classifier with several healthy classes (one for each crop type), predicting whether a crop of a specific type is healthy or afflicted with one of several diseases. In this configuration, the following fields are defined in the following way:
 ````
-fit.model.model.init_args.num_classes: 17
+fit.model.model.init_args.num_classes: 11
 fit.data.task: multi-HLT
 ````
 Additionally, all loggers in `fit.trainer.logger` have `name` set to `multi_HLT`.
+
+### One model per crop (Team 8)
+
+We train a separate classifier for each crop in our scope, using `config_cassava.yaml` (HLT, CMD, CBSD), `config_maize.yaml` (HLT, FAW, MSV, MLB, MLN) and `config_beans.yaml` (HLT, ALS, BR). They use `fit.data.crops` to keep only that crop's images, stronger augmentation (random crops, rotation, colour changes), and a single device (`accelerator: auto` picks the Mac GPU or a Colab GPU).
+
+## Prepare the data
+
+One command gets the data into `.data`, ready for training. Run it from the root of the project, pointing it to the shared zip in the team's Google Drive folder (on Colab, Drive is mounted at `/content/drive/MyDrive`; on a Mac with Google Drive for desktop, at `~/Library/CloudStorage/GoogleDrive-<email>/My Drive`):
+```
+python -m crop_health_model.data.make_dataset --drive-zip "<drive folder>/crop-health/crop-data.zip"
+```
+- If the zip exists, it is copied to local disk and extracted. This is the normal case and takes a few minutes. Running it again does nothing if the same zip is already extracted.
+- If the zip does not exist yet, the datasets are downloaded from Harvard Dataverse one at a time, the images are kept with their shorter side at 512 pixels, each archive is deleted after extraction, `annotations.csv` is generated, and everything is packed into the zip for the rest of the team. If this stops, run it again and it continues where it left off.
+
+Without `--drive-zip`, the data is only downloaded and annotated locally. To try the pipeline quickly, download only the smallest dataset (1.9 GB): `python -m crop_health_model.data.make_dataset --datasets maize-dataset-namibia`. The data is shared as one zip because reading thousands of small images directly from Google Drive is very slow.
 
 ## Additional configuration
 
@@ -40,12 +55,14 @@ A lot of additional elements within the data, the model and training process can
 ### Data configuration
 
 Several aspects of the data can be configured. For example:
-- The data can be configured to use a specific data split through `fit.data.data_split`. A value of `[0.8, 0.2]` will first split the entire dataset into a train and test set of proportions 80% and 20%, respectively. The train data will then be split a second time with the same 80/20 split, to become the final train and validation sets.
+- The train, validation and test proportions are set through `fit.data.data_split`, for example `[0.7, 0.15, 0.15]`. Each class is split separately with the same proportions, and `fit.data.split_seed` keeps the split identical between training and testing.
+- `fit.data.test_sources` can be set to a list of dataset folders (for example `["maize-dataset-namibia"]`). All images from those datasets then form the test set and are never seen in training, which shows how the model does on photos from a new source.
+- `fit.data.crops` keeps only the images of the listed crop types.
 - The number of workers to use in the `DataLoader` through `fit.data.num_workers`.
 - The transforms to apply to the training and test/validation data through `fit.data.train_transforms` and `fit.data.test_transforms`, respectively.
 - The normalization to apply to apply to the data (which will be the same for both the training and test/validation data) through `fit.data.normalization`.
 
-During a development stage, the `fit.data.limit` can be set to a positive integer, such as `1000`, to limit the size of the entire dataset to 1000 images.
+During a development stage, the `fit.data.limit` can be set to a positive integer, such as `1000`, to use a random sample of 1000 images.
 
 ### Model configuration
 
@@ -68,13 +85,15 @@ To run a training process, run the following command from the root of this proje
 python3 crop_health_model/scripts/train.py --config crop_health_model/configs/config_multi_HLT.yaml fit
 ```
 
+For a quick check that everything runs, add `--data.limit 1000 --trainer.max_epochs 1`.
+
 To evaluate a model on the validation set, identify the model version and the filename of its checkpoint, then run the following from the root of this project:
 ```
 python3 crop_health_model/scripts/train.py validate --config tb_logs/multi_HLT/version_0/config.yaml --ckpt_path tb_logs/multi_HLT/version_0/checkpoints/crop_health_model-epoch=5-step=7260-val_loss=0.181.ckpt --trainer.devices=1
 ```
 Here we set the number of devices to be 1 to avoid getting a warning about using distributed dataloaders in a validation/test phase. Such a value could also be set directly in the config file provided through the `--config` argument.
 
-Similarly, to evaluate the above model on the test set, run the following:
+Similarly, to evaluate the above model on the test set, run the following. Besides accuracy and F1, the test run prints the recall and precision of each class and saves `test_per_class.csv`, `test_confusion_matrix.csv` and `test_confusion_matrix.png` in the new log folder it creates:
 ```
 python3 crop_health_model/scripts/train.py test --config tb_logs/multi_HLT/version_0/config.yaml --ckpt_path tb_logs/multi_HLT/version_0/checkpoints/crop_health_model-epoch=5-step=7260-val_loss=0.181.ckpt --trainer.devices=1
 ```
