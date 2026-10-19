@@ -1,0 +1,113 @@
+# One model per crop. Run from the repo root:
+# python crop_health_model/scripts/train.py --config crop_health_model/configs/config_maize.yaml fit
+fit:
+  model:
+    model:
+      class_path: crop_health_model.models.model.ResNet
+      init_args:
+        weights: "DEFAULT"
+        num_classes: 5
+        num_layers: 18
+  data:
+    batch_size: 32
+    data_dir: .data
+    annotations_file: annotations.csv
+    task: "multi-HLT"
+    crops: ["maize"]
+    # train, validation, test proportions, split per class with a fixed seed
+    data_split: [0.7, 0.15, 0.15]
+    split_seed: 42
+    # set to dataset folder names to test on a whole unseen source, e.g. ["maize-dataset-namibia"]
+    test_sources: null
+    num_workers: 4
+    limit: null
+    # Augmentation: random crops, flips, rotation and colour changes so the model
+    # copes with phone photos taken at different distances, angles and light.
+    train_transforms:
+    - class_path: torchvision.transforms.RandomResizedCrop
+      init_args:
+        size: 224
+        scale: [0.6, 1.0]
+    - class_path: torchvision.transforms.RandomHorizontalFlip
+      init_args:
+        p: 0.5
+    - class_path: torchvision.transforms.RandomVerticalFlip
+      init_args:
+        p: 0.5
+    - class_path: torchvision.transforms.RandomRotation
+      init_args:
+        degrees: 20
+    - class_path: torchvision.transforms.ColorJitter
+      init_args:
+        brightness: 0.3
+        contrast: 0.3
+        saturation: 0.3
+        hue: 0.02
+    test_transforms:
+    - class_path: torchvision.transforms.Resize
+      init_args:
+        interpolation: 2
+        size: 256
+    - class_path: torchvision.transforms.CenterCrop
+      init_args:
+        size: 224
+    normalization:
+      class_path: torchvision.transforms.Normalize
+      init_args:
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+  trainer:
+    # "auto" picks the Mac GPU (mps) locally and the GPU on Colab
+    accelerator: auto
+    devices: 1
+    deterministic: false
+    max_epochs: 25
+    callbacks:
+    - class_path: lightning.pytorch.callbacks.EarlyStopping
+      init_args:
+        monitor: "val_loss"
+        mode: "min"
+        patience: 5
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        monitor: "val_loss"
+        mode: "min"
+        save_top_k: 1
+        filename: "crop_health_model-{epoch}-{step}-{val_loss:.3f}"
+    - class_path: crop_health_model.engines.callbacks.ImagePredictionLogger
+      init_args:
+        num_samples: 32
+    - class_path: crop_health_model.engines.callbacks.ClassWeightsCallback
+    - class_path: crop_health_model.engines.callbacks.SaveDataDictionaryCallback
+      init_args:
+        dict_name: "class_map"
+        filename: "index_to_name"
+    - class_path: crop_health_model.engines.callbacks.SaveModelScriptCallback
+      init_args:
+        filename: "model_script.py"
+        template_path: "crop_health_model/models/model.py"
+    - class_path: crop_health_model.engines.callbacks.SaveModelHandlerCallback
+      init_args:
+        filename: "model_handler.py"
+        config_path: "crop_health_model/configs/config_maize.yaml"
+    - class_path: crop_health_model.engines.callbacks.SaveSimplifiedCheckpoint
+      init_args:
+        filename: "best_model"
+    logger:
+    - class_path: lightning.pytorch.loggers.TensorBoardLogger
+      init_args:
+        save_dir: "tb_logs"
+        name: "maize"
+    - class_path: lightning.pytorch.loggers.CSVLogger
+      init_args:
+        save_dir: "csv_logs"
+        name: "maize"
+  optimizer:
+    class_path: torch.optim.Adam
+    init_args:
+      lr: 0.001
+  lr_scheduler:
+    class_path: torch.optim.lr_scheduler.StepLR
+    init_args:
+      step_size: 5
+      gamma: 0.1

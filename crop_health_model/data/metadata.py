@@ -221,7 +221,5 @@ all_datasets = [
     maize_dataset_namibia,
     maize_dataset_uganda,
     beans_dataset_uganda,
-    bananas_dataset_tanzania,
-    cocoa_dataset_karagro,
     maize_dataset_karagro,
 ]

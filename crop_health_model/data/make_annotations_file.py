@@ -56,7 +56,7 @@ def generate_annotations(
             if file.endswith((".jpg", ".jpeg")) and not any(
                 keyword in root for keyword in keywords_to_avoid
             ):
-                path = os.path.join(root.lstrip(".data/"), file)
+                path = os.path.join(os.path.relpath(root, ".data"), file)
 
                 # Try to open the image, if it fails, skip it
                 try:

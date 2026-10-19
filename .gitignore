@@ -172,6 +172,7 @@ cython_debug/
 
 # Team 8: keep training outputs, data, environments and model weights out of git
 tb_logs/
+csv_logs/
 .data/
 .venv/
 models/**/*.pt
