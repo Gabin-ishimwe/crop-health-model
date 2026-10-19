@@ -1,3 +1,21 @@
+"""Get the training data into .data, ready for training.
+
+Usage (from the repo root):
+    python -m crop_health_model.data.make_dataset --drive-zip "<drive folder>/crop-health/crop-data.zip"
+
+With --drive-zip:
+- if the zip exists (normal case), it is copied and extracted into .data, which
+  takes minutes;
+- if it does not exist yet, the datasets are downloaded from Harvard Dataverse,
+  extracted, downscaled and annotated, then packed into that zip for the team.
+Without --drive-zip, the datasets are downloaded and annotated locally only.
+
+--datasets limits the run to some datasets (folder names from metadata.py), e.g. for
+a quick test with the smallest one:
+    python -m crop_health_model.data.make_dataset --datasets maize-dataset-namibia
+"""
+
+import argparse
 import asyncio
 import os
 import shutil
@@ -10,7 +28,10 @@ from PIL import Image, ImageOps
 from tqdm import tqdm as sync_tqdm
 from tqdm.asyncio import tqdm as async_tqdm
 
+from crop_health_model.data.make_annotations_file import generate_all_annotations
 from crop_health_model.data.metadata import all_datasets
+from crop_health_model.data.pack_dataset import pack
+from crop_health_model.data.unpack_dataset import unpack
 
 harvard_dataverse_base_url = "https://dataverse.harvard.edu/api/access/datafile/"
 
@@ -185,12 +206,48 @@ def extract_dataset(dataset: dict) -> None:
                 os.remove(part_path)
 
 
-def main() -> None:
-    """Download and extract one dataset at a time to limit disk usage."""
-    for dataset in all_datasets:
+def download_and_prepare(datasets: list[dict]) -> None:
+    """Download and extract one dataset at a time to limit disk usage, then annotate."""
+    for dataset in datasets:
         print(f"\n=== {dataset['folder']} ===")
         asyncio.run(download_dataset(dataset))
         extract_dataset(dataset)
+    generate_all_annotations()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Get the training data into .data")
+    parser.add_argument(
+        "--drive-zip",
+        help="Shared dataset zip (e.g. in Google Drive). Loaded if it exists, "
+        "otherwise created after downloading.",
+    )
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        metavar="FOLDER",
+        choices=[d["folder"] for d in all_datasets],
+        help="Only download these datasets (folder names from metadata.py)",
+    )
+    args = parser.parse_args()
+
+    # A partial dataset must not become the shared zip the rest of the team loads
+    if args.drive_zip and args.datasets:
+        parser.error("--datasets cannot be combined with --drive-zip")
+
+    if args.drive_zip and os.path.exists(args.drive_zip):
+        print(f"Loading the shared dataset from {args.drive_zip}")
+        unpack(args.drive_zip, DATA_DIR)
+        return
+
+    if args.datasets:
+        datasets = [d for d in all_datasets if d["folder"] in args.datasets]
+    else:
+        datasets = all_datasets
+    download_and_prepare(datasets)
+
+    if args.drive_zip:
+        pack(DATA_DIR, args.drive_zip)
 
 
 if __name__ == "__main__":

@@ -39,12 +39,14 @@ We train a separate classifier for each crop in our scope, using `config_cassava
 
 ## Prepare the data
 
-From the root of the project:
+One command gets the data into `.data`, ready for training. Run it from the root of the project, pointing it to the shared zip in the team's Google Drive folder (on Colab, Drive is mounted at `/content/drive/MyDrive`; on a Mac with Google Drive for desktop, at `~/Library/CloudStorage/GoogleDrive-<email>/My Drive`):
 ```
-python -m crop_health_model.data.make_dataset
-python -m crop_health_model.data.make_annotations_file
+python -m crop_health_model.data.make_dataset --drive-zip "<drive folder>/crop-health/crop-data.zip"
 ```
-The first command downloads one dataset at a time, keeps the images with their shorter side at 512 pixels, and deletes each archive after extracting it. If it stops, run it again and it continues where it left off.
+- If the zip exists, it is copied to local disk and extracted. This is the normal case and takes a few minutes. Running it again does nothing if the same zip is already extracted.
+- If the zip does not exist yet, the datasets are downloaded from Harvard Dataverse one at a time, the images are kept with their shorter side at 512 pixels, each archive is deleted after extraction, `annotations.csv` is generated, and everything is packed into the zip for the rest of the team. If this stops, run it again and it continues where it left off.
+
+Without `--drive-zip`, the data is only downloaded and annotated locally. To try the pipeline quickly, download only the smallest dataset (1.9 GB): `python -m crop_health_model.data.make_dataset --datasets maize-dataset-namibia`. The data is shared as one zip because reading thousands of small images directly from Google Drive is very slow.
 
 ## Additional configuration
 

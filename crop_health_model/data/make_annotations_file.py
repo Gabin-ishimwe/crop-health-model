@@ -123,6 +123,10 @@ def generate_all_annotations() -> None:
     all_dfs = []
     for dataset in all_datasets:
         img_dir = os.path.join(".data", dataset["folder"])
+        # Datasets not downloaded yet (e.g. after make_dataset --datasets) are skipped
+        if not os.path.isdir(img_dir):
+            print(f"Skipping {dataset['folder']}: not downloaded")
+            continue
         keywords_to_avoid = ["MACOSX"]
         annotations_file_path = os.path.join(
             ".data", dataset["folder"], "annotations.csv"
@@ -137,6 +141,8 @@ def generate_all_annotations() -> None:
         )
         print()
         all_dfs.append(df)
+    if not all_dfs:
+        raise FileNotFoundError("No datasets found in .data. Run make_dataset first.")
     all_df = pd.concat(all_dfs)
     all_df.to_csv(os.path.join(".data", "annotations.csv"), index=False)
     print("All annotations saved to .data/annotations.csv")
