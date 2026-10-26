@@ -8,6 +8,9 @@ With --drive-zip:
   takes minutes;
 - if it does not exist yet, the datasets are downloaded from Harvard Dataverse,
   extracted, downscaled and annotated, then packed into that zip for the team.
+  Each finished dataset is also saved next to it in a "<name>-parts" folder, so
+  if the run is interrupted (e.g. a Colab disconnect), rerunning the same command
+  restores the finished datasets from there and only downloads the rest.
 Without --drive-zip, the datasets are downloaded and annotated locally only.
 
 --datasets limits the run to some datasets (folder names from metadata.py), e.g. for
@@ -19,6 +22,7 @@ import argparse
 import asyncio
 import os
 import shutil
+import sys
 import zipfile
 from concurrent.futures import ProcessPoolExecutor
 
@@ -206,13 +210,52 @@ def extract_dataset(dataset: dict) -> None:
                 os.remove(part_path)
 
 
-def download_and_prepare(datasets: list[dict]) -> None:
-    """Download and extract one dataset at a time to limit disk usage, then annotate."""
+def dataset_complete(dataset: dict) -> bool:
+    """True if every archive of the dataset was downloaded and extracted."""
+    folder = os.path.join(DATA_DIR, dataset["folder"])
+    return all(is_extracted(os.path.join(folder, fname)) for _, fname in dataset["ids"])
+
+
+def parts_dir_for(drive_zip: str) -> str:
+    """Folder next to the shared zip where finished datasets are saved."""
+    base = os.path.splitext(drive_zip)[0]
+    return base + "-parts"
+
+
+def download_and_prepare(datasets: list[dict], parts_dir: str | None = None) -> bool:
+    """Download and extract one dataset at a time to limit disk usage, then annotate.
+
+    If parts_dir is set, each finished dataset is saved there as its own zip, and
+    datasets already saved there are restored instead of downloaded again.
+
+    Returns:
+        bool: True if every dataset is complete.
+    """
+    incomplete = []
     for dataset in datasets:
-        print(f"\n=== {dataset['folder']} ===")
+        folder = dataset["folder"]
+        print(f"\n=== {folder} ===")
+        part = os.path.join(parts_dir, folder + ".zip") if parts_dir else None
+
+        if part and os.path.exists(part):
+            print(f"Restoring {folder} from {part}")
+            unpack(part, os.path.join(DATA_DIR, folder))
+            continue
+
         asyncio.run(download_dataset(dataset))
         extract_dataset(dataset)
+
+        if not dataset_complete(dataset):
+            print(f"{folder} is incomplete (see the errors above), it was not saved")
+            incomplete.append(folder)
+        elif part:
+            pack(os.path.join(DATA_DIR, folder), part, require_annotations=False)
+
     generate_all_annotations()
+
+    if incomplete:
+        print(f"\nIncomplete datasets: {incomplete}. Run the same command again.")
+    return not incomplete
 
 
 def main() -> None:
@@ -244,10 +287,17 @@ def main() -> None:
         datasets = [d for d in all_datasets if d["folder"] in args.datasets]
     else:
         datasets = all_datasets
-    download_and_prepare(datasets)
+    parts_dir = parts_dir_for(args.drive_zip) if args.drive_zip else None
+    complete = download_and_prepare(datasets, parts_dir)
 
     if args.drive_zip:
+        if not complete:
+            print("The shared zip was not created because some datasets are incomplete.")
+            sys.exit(1)
         pack(DATA_DIR, args.drive_zip)
+        # The shared zip now holds everything, so the per-dataset parts can go
+        shutil.rmtree(parts_dir, ignore_errors=True)
+        print(f"Removed the per-dataset parts in {parts_dir}")
 
 
 if __name__ == "__main__":

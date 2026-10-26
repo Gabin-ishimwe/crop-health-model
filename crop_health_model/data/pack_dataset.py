@@ -34,13 +34,15 @@ def collect_files(data_dir: str) -> list[str]:
     return sorted(files)
 
 
-def pack(data_dir: str, out_path: str) -> dict:
+def pack(data_dir: str, out_path: str, require_annotations: bool = True) -> dict:
     """Write every prepared file in data_dir to a zip at out_path.
 
     The zip is written under a temporary name and renamed when complete, so a
     half-written file is never picked up by Drive sync or unpack_dataset.
     """
-    if not os.path.exists(os.path.join(data_dir, "annotations.csv")):
+    if require_annotations and not os.path.exists(
+        os.path.join(data_dir, "annotations.csv")
+    ):
         raise FileNotFoundError(
             f"No annotations.csv in {data_dir}. Run make_annotations_file first."
         )

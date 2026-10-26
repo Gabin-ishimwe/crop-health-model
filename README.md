@@ -44,7 +44,9 @@ One command gets the data into `.data`, ready for training. Run it from the root
 python -m crop_health_model.data.make_dataset --drive-zip "<drive folder>/crop-health/crop-data.zip"
 ```
 - If the zip exists, it is copied to local disk and extracted. This is the normal case and takes a few minutes. Running it again does nothing if the same zip is already extracted.
-- If the zip does not exist yet, the datasets are downloaded from Harvard Dataverse one at a time, the images are kept with their shorter side at 512 pixels, each archive is deleted after extraction, `annotations.csv` is generated, and everything is packed into the zip for the rest of the team. If this stops, run it again and it continues where it left off.
+- If the zip does not exist yet, the datasets are downloaded from Harvard Dataverse one at a time, the images are kept with their shorter side at 512 pixels, each archive is deleted after extraction, `annotations.csv` is generated, and everything is packed into the zip for the rest of the team. Each finished dataset is also saved next to the zip (in `crop-data-parts/`), so if the run is interrupted, running the same command again restores those and only downloads the rest. The parts are deleted once the full zip is written.
+
+The first full download is easiest on Colab, which downloads much faster than a home connection: open [notebooks/prepare_data_colab.ipynb](https://colab.research.google.com/github/Gabin-ishimwe/crop-health-model/blob/main/notebooks/prepare_data_colab.ipynb) and run all cells.
 
 Without `--drive-zip`, the data is only downloaded and annotated locally. To try the pipeline quickly, download only the smallest dataset (1.9 GB): `python -m crop_health_model.data.make_dataset --datasets maize-dataset-namibia`. The data is shared as one zip because reading thousands of small images directly from Google Drive is very slow.
 
