@@ -177,3 +177,6 @@ csv_logs/
 .venv/
 models/**/*.pt
 models/**/*.mar
+
+# Training runs downloaded from Drive (models are shared through Drive, not git)
+runs/
