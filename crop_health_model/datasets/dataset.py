@@ -17,16 +17,29 @@ class CropHealthDataset(Dataset):
         transform: Callable | None = None,
         target_transform: Callable | None = None,
         limit: int | None = None,
+        crops: list[str] | None = None,
     ) -> None:
         self.data_df = pd.read_csv(annotations_file)
         self.img_dir = img_dir
         self.transform = transform
         self.target_transform = target_transform
 
-        # if limit is not None, use only the first `limit` rows
-        if limit:
-            self.data_df = self.data_df[:limit]
+        # The first folder of each image path is the dataset it came from,
+        # e.g. "maize-dataset-uganda". Used for source-based test splits.
+        self.data_df["source"] = self.data_df["image"].str.split("/").str[0]
+
+        # if crops is set, keep only images of those crop types (one model per crop)
+        if crops:
+            self.data_df = self.data_df[self.data_df["crop_type"].isin(crops)]
+            print(f"Using only crops: {crops}")
+
+        # if limit is set, use a random sample of `limit` rows. The annotations file
+        # is ordered by dataset, so taking the first rows would give only one class.
+        if limit and limit < len(self.data_df):
+            self.data_df = self.data_df.sample(n=limit, random_state=0)
             print(f"Using only {limit} rows")
+
+        self.data_df = self.data_df.reset_index(drop=True)
 
         match task:
             case "binary":
@@ -63,7 +76,7 @@ class CropHealthDataset(Dataset):
         row = self.data_df.iloc[idx]
         img_path = os.path.join(self.img_dir, row["image"])
         # open image with PIL
-        image = Image.open(img_path)
+        image = Image.open(img_path).convert("RGB")
         label_name = row["label"]
         label = self.class_map[label_name]
         if self.transform:
